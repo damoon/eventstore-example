@@ -5,6 +5,9 @@ https://kafka.apache.org/downloads
 https://istio.io/
 https://grpc.io/
 
+https://www.telepresence.io/
+https://www.eclipse.org/che/
+
 https://www.slimframework.com/
 http://sparkjava.com/
 https://nodejs.org/en/
