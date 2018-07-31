@@ -1,0 +1,23 @@
+##---
+# Source: kafka/charts/zookeeper/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-zookeeper
+  labels:
+    app: zookeeper
+    chart: zookeeper-1.0.2
+    release: kafka
+    heritage: Tiller
+  annotations:
+spec:
+  type: ClusterIP
+  ports:
+    - name: client
+      port: 2181
+      protocol: TCP
+      targetPort: client
+      
+  selector:
+    app: zookeeper
+    release: kafka

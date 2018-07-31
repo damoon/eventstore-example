@@ -1,0 +1,20 @@
+##---
+# Source: kafka/templates/service-brokers.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  labels:
+    app: kafka
+    chart: kafka-0.8.5
+    release: kafka
+    heritage: Tiller
+spec:
+  ports:
+  - name: broker
+    port: 9092
+    targetPort: kafka
+  selector:
+    app: kafka
+    release: kafka
+---

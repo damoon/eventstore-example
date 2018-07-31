@@ -1,0 +1,20 @@
+##---
+# Source: kafka/charts/zookeeper/templates/poddisruptionbudget.yaml
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka-zookeeper
+  labels:
+    app: zookeeper
+    chart: zookeeper-1.0.2
+    release: kafka
+    heritage: Tiller
+    component: server
+spec:
+  selector:
+    matchLabels:
+      app: zookeeper
+      release: kafka
+      component: server
+  maxUnavailable: 1
+  
