@@ -3,19 +3,26 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:08d90e71c7f8b8e5607552dc656045a299d27e152ac0e29b04ac98b7235a9dd3"
   name = "github.com/drhodes/golorem"
   packages = ["."]
+  pruneopts = "UT"
   revision = "ecccc744c2d953a1e13cbe5e5fc5d4cbc9b8daeb"
 
 [[projects]]
+  digest = "1:274f67cb6fed9588ea2521ecdac05a6d62a8c51c074c1fccc6a49a40ba80e925"
   name = "github.com/satori/go.uuid"
   packages = ["."]
+  pruneopts = "UT"
   revision = "f58768cc1a7a7e77a3bd49e98cdd21419399b6a3"
   version = "v1.2.0"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f9b143fb1f31f566da1f0b8efacc8504816fc8840932e51cf068c473956a7162"
+  input-imports = [
+    "github.com/drhodes/golorem",
+    "github.com/satori/go.uuid",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
