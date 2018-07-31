@@ -1,3 +1,6 @@
+# from https://blog.giantswarm.io/what-you-yaml-is-what-you-get/
+
+all: manifests/kafka
 
 manifests/kafka: values/kafka.yaml $(shell find charts/kafka -type f)
 	mkdir -p ./manifests/kafka
@@ -20,4 +23,3 @@ charts/kafka:
 	  --untardir ./charts \
 	  --version 0.8.5 \
 	    kafka
-

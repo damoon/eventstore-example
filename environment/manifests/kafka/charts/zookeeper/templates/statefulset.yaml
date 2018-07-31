@@ -13,7 +13,6 @@ metadata:
 spec:
   serviceName: kafka-zookeeper-headless
   replicas: 3
-  terminationGracePeriodSeconds: 1800
   selector:
     matchLabels:
       app: zookeeper
@@ -34,6 +33,7 @@ spec:
         fsGroup: 1000
         runAsUser: 1000
         
+      terminationGracePeriodSeconds: 1800
       containers:
 
         - name: zookeeper
