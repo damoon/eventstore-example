@@ -25,22 +25,25 @@ func main() {
 	w := csv.NewWriter(os.Stdout)
 
 	for i := 0; i < *rows; i++ {
-		UUID := uuid.NewV4()
-		price := float64(rand.Intn(10000)) / 100
-		record := []string{
-			UUID.String(),
-			fmt.Sprintf("%s %s %s", lorem.Word(4, 13), lorem.Word(4, 13), lorem.Word(4, 13)),
-			lorem.Sentence(12, 24),
-			lorem.Paragraph(3, 6),
-			lorem.Url(),
-			lorem.Url(),
-			fmt.Sprintf("%.2f", price),
-		}
-		w.Write(record)
+		w.Write(newRow())
 	}
 
 	w.Flush()
 	if err := w.Error(); err != nil {
 		log.Fatalf("error writing csv: %s\n", err)
+	}
+}
+
+func newRow() []string {
+	UUID := uuid.NewV4()
+	price := float64(rand.Intn(10000)) / 100
+	return []string{
+		UUID.String(),
+		fmt.Sprintf("%s %s %s", lorem.Word(4, 13), lorem.Word(4, 13), lorem.Word(4, 13)),
+		lorem.Sentence(12, 24),
+		lorem.Paragraph(3, 6),
+		lorem.Url(),
+		lorem.Url(),
+		fmt.Sprintf("%.2f", price),
 	}
 }
