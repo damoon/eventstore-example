@@ -25,11 +25,7 @@ func main() {
 	w := csv.NewWriter(os.Stdout)
 
 	for i := 0; i < *rows; i++ {
-		UUID, err := uuid.NewV4()
-		if err != nil {
-			log.Fatalf("failed to generate a UUID: %s\n", err)
-			return
-		}
+		UUID := uuid.NewV4()
 		price := float64(rand.Intn(10000)) / 100
 		record := []string{
 			UUID.String(),
