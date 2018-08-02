@@ -36,11 +36,14 @@ func main() {
 
 		if rand.Intn(100) < *add {
 			w.Write(newRow())
+			log.Print("add")
 		}
 		if rand.Intn(100) < *remove {
+			log.Print("remove")
 			continue
 		}
 		if rand.Intn(100) < *modify {
+			log.Print("modify")
 			record = modifyRow(record)
 		}
 		w.Write(record)
@@ -62,22 +65,22 @@ func modifyRow(in []string) []string {
 	largeImageURL := in[5]
 	price := in[6]
 
-	if rand.Intn(1) == 1 {
+	if rand.Intn(2) == 1 {
 		title = fmt.Sprintf("%s %s %s", lorem.Word(4, 13), lorem.Word(4, 13), lorem.Word(4, 13))
 	}
-	if rand.Intn(1) == 1 {
+	if rand.Intn(2) == 1 {
 		description = lorem.Sentence(12, 24)
 	}
-	if rand.Intn(1) == 1 {
+	if rand.Intn(2) == 1 {
 		longText = lorem.Paragraph(3, 6)
 	}
-	if rand.Intn(1) == 1 {
+	if rand.Intn(2) == 1 {
 		smallImageURL = lorem.Url()
 	}
-	if rand.Intn(1) == 1 {
+	if rand.Intn(2) == 1 {
 		largeImageURL = lorem.Url()
 	}
-	if rand.Intn(1) == 1 {
+	if rand.Intn(2) == 1 {
 		price = fmt.Sprintf("%.2f", float64(rand.Intn(10000))/100)
 	}
 
