@@ -36,14 +36,11 @@ func main() {
 
 		if rand.Intn(100) < *add {
 			w.Write(newRow())
-			log.Print("add")
 		}
 		if rand.Intn(100) < *remove {
-			log.Print("remove")
 			continue
 		}
 		if rand.Intn(100) < *modify {
-			log.Print("modify")
 			record = modifyRow(record)
 		}
 		w.Write(record)
