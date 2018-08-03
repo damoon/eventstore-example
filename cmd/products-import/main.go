@@ -77,6 +77,7 @@ func send(producer sarama.SyncProducer, row []string) (int32, int64, error) {
 
 	msg := &sarama.ProducerMessage{
 		Topic: *topic,
+		Key:   sarama.StringEncoder(product.GetUuid()),
 		Value: sarama.ByteEncoder(bytes),
 	}
 	return producer.SendMessage(msg)
