@@ -16,11 +16,11 @@ import (
 )
 
 var (
-	brokerList  = kingpin.Flag("brokerList", "List of brokers to connect").Default("kafka:9092").Strings()
-	topic       = kingpin.Flag("topic", "Topic name").Default("products").String()
-	verbose     = kingpin.Flag("verbose", "Verbosity").Default("false").Bool()
-	latestPath  = kingpin.Arg("latest", "path to latest import file").Required().String()
-	currentPath = kingpin.Arg("current", "path to current import file").Required().String()
+	brokerList   = kingpin.Flag("brokerList", "List of brokers to connect").Default("kafka:9092").Strings()
+	topic        = kingpin.Flag("topic", "Topic name").Default("products").String()
+	verbose      = kingpin.Flag("verbose", "Verbosity").Default("false").Bool()
+	currentPath  = kingpin.Arg("current", "path to current import file").Required().String()
+	previousPath = kingpin.Arg("previous", "path to previous import file").Default("/dev/zero").String()
 )
 
 func main() {
@@ -40,19 +40,30 @@ func main() {
 		}
 	}()
 
-	f, err := os.Open(*latestPath)
+	f, err := os.Open(*previousPath)
+	if err != nil {
+		log.Panicf("failed to open previous import file: %s", err)
+	}
+	previousUUIDs, err := uuids(f)
+	if err != nil {
+		log.Panicf("failed to load UUIDs from previous import file: %s", err)
+	}
+
+	f, err = os.Open(*currentPath)
 	if err != nil {
 		log.Panicf("failed to open latest import file: %s", err)
 	}
-	r := csv.NewReader(f)
 
+	r := csv.NewReader(f)
 	for {
 		row, err := r.Read()
 		if err == io.EOF {
 			break
 		}
 
-		partition, offset, err := send(producer, row)
+		delete(previousUUIDs, row[0])
+
+		partition, offset, err := sendSet(producer, row)
 		if err != nil {
 			log.Panicf("failed to send product to kafka: %s", err)
 		}
@@ -61,9 +72,41 @@ func main() {
 		}
 	}
 
+	for uuid := range previousUUIDs {
+		partition, offset, err := sendUnset(producer, uuid)
+		if err != nil {
+			log.Panicf("failed to send deletion %s to kafka: %s", uuid, err)
+		}
+		if *verbose {
+			fmt.Printf("Delete message is stored in topic(%s)/partition(%d)/offset(%d)\n", *topic, partition, offset)
+		}
+	}
+
 }
 
-func send(producer sarama.SyncProducer, row []string) (int32, int64, error) {
+func uuids(f io.Reader) (map[string]bool, error) {
+	m := make(map[string]bool)
+	r := csv.NewReader(f)
+	for {
+		row, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		m[row[0]] = true
+	}
+	return m, nil
+}
+
+func sendUnset(producer sarama.SyncProducer, uuid string) (int32, int64, error) {
+	msg := &sarama.ProducerMessage{
+		Topic: *topic,
+		Key:   sarama.StringEncoder(uuid),
+		Value: nil,
+	}
+	return producer.SendMessage(msg)
+}
+
+func sendSet(producer sarama.SyncProducer, row []string) (int32, int64, error) {
 
 	product, err := row2product(row)
 	if err != nil {
