@@ -12,11 +12,10 @@ import (
 )
 
 var (
-	brokerList        = kingpin.Flag("brokerList", "List of brokers to connect").Default("localhost:9092").Strings()
-	topic             = kingpin.Flag("topic", "Topic name").Default("products").String()
-	partition         = kingpin.Flag("partition", "Partition number").Default("0").String()
-	offsetType        = kingpin.Flag("offsetType", "Offset Type (OffsetNewest | OffsetOldest)").Default("-1").Int()
-	messageCountStart = kingpin.Flag("messageCountStart", "Message counter start from:").Int()
+	brokerList = kingpin.Flag("brokerList", "List of brokers to connect").Default("localhost:9092").Strings()
+	topic      = kingpin.Flag("topic", "Topic name").Default("products").String()
+	partition  = kingpin.Flag("partition", "Partition number").Default("0").String()
+	offsetType = kingpin.Flag("offsetType", "Offset Type (OffsetNewest | OffsetOldest)").Default("-1").Int()
 )
 
 func main() {
@@ -30,8 +29,7 @@ func main() {
 
 	config := sarama.NewConfig()
 	config.Consumer.Return.Errors = true
-	brokers := *brokerList
-	master, err := sarama.NewConsumer(brokers, config)
+	master, err := sarama.NewConsumer(*brokerList, config)
 	if err != nil {
 		panic(err)
 	}
@@ -40,34 +38,30 @@ func main() {
 			panic(err)
 		}
 	}()
+
 	consumer, err := master.ConsumePartition(*topic, 0, sarama.OffsetOldest)
 	if err != nil {
 		panic(err)
 	}
+
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt)
 	doneCh := make(chan struct{})
+
 	go func() {
 		for {
 			select {
 			case err := <-consumer.Errors():
 				fmt.Println(err)
 			case msg := <-consumer.Messages():
-				*messageCountStart++
-				//				fmt.Println("Received messages", string(msg.Key), string(msg.Value))
-				/*
-					product := &pb.Product{}
-					err := proto.Unmarshal(msg.Value, product)
-					if err != nil {
-						fmt.Println(err)
-						continue
-					}
-				*/
-				err = client.Set(string(msg.Key), msg.Value, 0).Err()
-				if err != nil {
-					panic(err)
+				f := set
+				if msg.Value == nil {
+					f = del
 				}
-
+				err := f(client, msg)
+				if err != nil {
+					fmt.Println(err)
+				}
 			case <-signals:
 				fmt.Println("Interrupt is detected")
 				doneCh <- struct{}{}
@@ -75,5 +69,12 @@ func main() {
 		}
 	}()
 	<-doneCh
-	fmt.Println("Processed", *messageCountStart, "messages")
+}
+
+func del(client *redis.Client, msg *sarama.ConsumerMessage) error {
+	return client.Del(string(msg.Key)).Err()
+}
+
+func set(client *redis.Client, msg *sarama.ConsumerMessage) error {
+	return client.Set(string(msg.Key), msg.Value, 0).Err()
 }
