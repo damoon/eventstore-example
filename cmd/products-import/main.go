@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"sync"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
@@ -29,15 +28,20 @@ func main() {
 	kingpin.Parse()
 	config := sarama.NewConfig()
 	config.Producer.RequiredAcks = sarama.WaitForAll
-	config.Producer.Retry.Max = 5
-	config.Producer.Return.Successes = true
-	producer, err := sarama.NewSyncProducer(*brokerList, config)
+	config.Producer.Flush.MaxMessages = 500
+	producer, err := sarama.NewAsyncProducer(*brokerList, config)
 	if err != nil {
 		log.Panicf("failed to setup the kafka producer: %s", err)
 	}
 	defer func() {
 		if err := producer.Close(); err != nil {
 			log.Panicf("failed to close the kafka producer: %s", err)
+		}
+	}()
+
+	go func() {
+		for err := range producer.Errors() {
+			log.Panicf("failed to send msg (key %s): %s", err.Msg.Key, err.Err)
 		}
 	}()
 
@@ -50,13 +54,11 @@ func main() {
 		log.Panicf("failed to load UUIDs from previous import file: %s", err)
 	}
 
+	var i int
 	f, err = os.Open(*currentPath)
 	if err != nil {
 		log.Panicf("failed to open latest import file: %s", err)
 	}
-
-	var wg sync.WaitGroup
-
 	r := csv.NewReader(f)
 	for {
 		row, err := r.Read()
@@ -66,27 +68,25 @@ func main() {
 
 		delete(previousUUIDs, row[0])
 
-		wg.Add(1)
-		log.Printf("insert/update product %s\n", row[0])
-		go func(row []string) {
-			defer wg.Done()
-			msg, err := updateMsg(row)
-			if err != nil {
-				log.Panicf("failed encode message: %s", err)
-			}
-			send(producer, msg, *verbose)
-		}(row)
+		i++
+		if *verbose {
+			log.Printf("insert/update product #%d %s\n", i, row[0])
+		}
+		msg, err := updateMsg(row)
+		if err != nil {
+			log.Panicf("failed to create update message: %s", err)
+		}
+		producer.Input() <- msg
 	}
+
 	for uuid := range previousUUIDs {
-		wg.Add(1)
-		go func(uuid string) {
-			log.Printf("delete product %s\n", uuid)
-			defer wg.Done()
-			msg := deleteMsg(uuid)
-			send(producer, msg, *verbose)
-		}(uuid)
+		i++
+		if *verbose {
+			log.Printf("delete product #%d %s\n", i, uuid)
+		}
+		msg := deleteMsg(uuid)
+		producer.Input() <- msg
 	}
-	wg.Wait()
 }
 
 func uuids(f io.Reader) (map[string]bool, error) {
@@ -100,16 +100,6 @@ func uuids(f io.Reader) (map[string]bool, error) {
 		m[row[0]] = true
 	}
 	return m, nil
-}
-
-func send(producer sarama.SyncProducer, msg *sarama.ProducerMessage, verbose bool) {
-	partition, offset, err := producer.SendMessage(msg)
-	if err != nil {
-		log.Panicf("failed to send product to kafka: %s", err)
-	}
-	if verbose {
-		fmt.Printf("Message is stored in topic(%s)/partition(%d)/offset(%d)\n", *topic, partition, offset)
-	}
 }
 
 func deleteMsg(uuid string) *sarama.ProducerMessage {
