@@ -12,19 +12,22 @@ import (
 )
 
 var (
-	brokerList = kingpin.Flag("brokerList", "List of brokers to connect").Default("localhost:9092").Strings()
-	topic      = kingpin.Flag("topic", "Topic name").Default("products").String()
-	partition  = kingpin.Flag("partition", "Partition number").Default("0").String()
-	offsetType = kingpin.Flag("offsetType", "Offset Type (OffsetNewest | OffsetOldest)").Default("-1").Int()
+	brokerList    = kingpin.Flag("brokerList", "List of brokers to connect").Default("localhost:9092").Strings()
+	topic         = kingpin.Flag("topic", "Topic name").Default("products").String()
+	partition     = kingpin.Flag("partition", "Partition number").Default("0").String()
+	offsetType    = kingpin.Flag("offsetType", "Offset Type (OffsetNewest | OffsetOldest)").Default("-1").Int()
+	redisAddress  = kingpin.Flag("redisAddress", "Redis Host").Default("redis:6379").String()
+	redisPassword = kingpin.Flag("redisPassword", "Redis Password").Default("").String()
+	redisDatabase = kingpin.Flag("redisDatabase", "Redis Database").Default("0").Int()
 )
 
 func main() {
 	kingpin.Parse()
 
 	client := redis.NewClient(&redis.Options{
-		Addr:     "172.17.0.5:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
+		Addr:     *redisAddress,
+		Password: *redisPassword,
+		DB:       *redisDatabase,
 	})
 
 	config := sarama.NewConfig()
