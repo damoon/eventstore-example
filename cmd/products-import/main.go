@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"sync"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
@@ -54,6 +55,8 @@ func main() {
 		log.Panicf("failed to open latest import file: %s", err)
 	}
 
+	var wg sync.WaitGroup
+
 	r := csv.NewReader(f)
 	for {
 		row, err := r.Read()
@@ -63,25 +66,27 @@ func main() {
 
 		delete(previousUUIDs, row[0])
 
-		partition, offset, err := sendSet(producer, row)
-		if err != nil {
-			log.Panicf("failed to send product to kafka: %s", err)
-		}
-		if *verbose {
-			fmt.Printf("Message is stored in topic(%s)/partition(%d)/offset(%d)\n", *topic, partition, offset)
-		}
+		wg.Add(1)
+		go func(row []string) {
+			defer wg.Done()
+			msg, err := updateMsg(row)
+			if err != nil {
+				log.Panicf("failed encode message: %s", err)
+			}
+			send(producer, msg, *verbose)
+		}(row)
 	}
 
 	for uuid := range previousUUIDs {
-		partition, offset, err := sendUnset(producer, uuid)
-		if err != nil {
-			log.Panicf("failed to send deletion %s to kafka: %s", uuid, err)
-		}
-		if *verbose {
-			fmt.Printf("Delete message is stored in topic(%s)/partition(%d)/offset(%d)\n", *topic, partition, offset)
-		}
+		wg.Add(1)
+		go func(uuid string) {
+			defer wg.Done()
+			msg := deleteMsg(uuid)
+			send(producer, msg, *verbose)
+		}(uuid)
 	}
 
+	wg.Wait()
 }
 
 func uuids(f io.Reader) (map[string]bool, error) {
@@ -97,33 +102,40 @@ func uuids(f io.Reader) (map[string]bool, error) {
 	return m, nil
 }
 
-func sendUnset(producer sarama.SyncProducer, uuid string) (int32, int64, error) {
-	msg := &sarama.ProducerMessage{
+func send(producer sarama.SyncProducer, msg *sarama.ProducerMessage, verbose bool) {
+	partition, offset, err := producer.SendMessage(msg)
+	if err != nil {
+		log.Panicf("failed to send product to kafka: %s", err)
+	}
+	if verbose {
+		fmt.Printf("Message is stored in topic(%s)/partition(%d)/offset(%d)\n", *topic, partition, offset)
+	}
+}
+
+func deleteMsg(uuid string) *sarama.ProducerMessage {
+	return &sarama.ProducerMessage{
 		Topic: *topic,
 		Key:   sarama.StringEncoder(uuid),
 		Value: nil,
 	}
-	return producer.SendMessage(msg)
 }
 
-func sendSet(producer sarama.SyncProducer, row []string) (int32, int64, error) {
-
+func updateMsg(row []string) (*sarama.ProducerMessage, error) {
 	product, err := row2product(row)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to map row to proto buffer product: %s", err)
+		return &sarama.ProducerMessage{}, fmt.Errorf("failed to map row to proto buffer product: %s", err)
 	}
 
 	bytes, err := proto.Marshal(product)
 	if err != nil {
-		return 0, 0, err
+		return &sarama.ProducerMessage{}, fmt.Errorf("failed to serialize product %s: %s", product.GetUuid(), err)
 	}
 
-	msg := &sarama.ProducerMessage{
+	return &sarama.ProducerMessage{
 		Topic: *topic,
 		Key:   sarama.StringEncoder(product.GetUuid()),
 		Value: sarama.ByteEncoder(bytes),
-	}
-	return producer.SendMessage(msg)
+	}, nil
 }
 
 func row2product(row []string) (*pb.Product, error) {

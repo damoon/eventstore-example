@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
@@ -51,22 +52,29 @@ func main() {
 	signal.Notify(signals, os.Interrupt)
 	doneCh := make(chan struct{})
 
+	var wg sync.WaitGroup
+
 	go func() {
 		for {
 			select {
 			case err := <-consumer.Errors():
 				fmt.Println(err)
 			case msg := <-consumer.Messages():
-				f := set
-				if msg.Value == nil {
-					f = del
-				}
-				err := f(client, msg)
-				if err != nil {
-					fmt.Println(err)
-				}
+				wg.Add(1)
+				go func(msg *sarama.ConsumerMessage) {
+					defer wg.Done()
+					f := set
+					if msg.Value == nil {
+						f = del
+					}
+					err := f(client, msg)
+					if err != nil {
+						fmt.Println(err)
+					}
+				}(msg)
 			case <-signals:
 				fmt.Println("Interrupt is detected")
+				wg.Wait()
 				doneCh <- struct{}{}
 			}
 		}
