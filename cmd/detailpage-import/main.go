@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -60,6 +61,7 @@ func main() {
 			case err := <-consumer.Errors():
 				fmt.Println(err)
 			case msg := <-consumer.Messages():
+				fmt.Printf("offset %d\n", msg.Offset)
 				wg.Add(1)
 				go func(msg *sarama.ConsumerMessage) {
 					defer wg.Done()
@@ -83,9 +85,11 @@ func main() {
 }
 
 func del(client *redis.Client, msg *sarama.ConsumerMessage) error {
+	log.Printf("delete product %s\n", string(msg.Key))
 	return client.Del(string(msg.Key)).Err()
 }
 
 func set(client *redis.Client, msg *sarama.ConsumerMessage) error {
+	log.Printf("insert/update product %s\n", string(msg.Key))
 	return client.Set(string(msg.Key), msg.Value, 0).Err()
 }

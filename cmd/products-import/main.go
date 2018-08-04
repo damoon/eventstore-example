@@ -21,7 +21,7 @@ var (
 	topic        = kingpin.Flag("topic", "Topic name").Default("products").String()
 	verbose      = kingpin.Flag("verbose", "Verbosity").Default("false").Bool()
 	currentPath  = kingpin.Arg("current", "path to current import file").Required().String()
-	previousPath = kingpin.Arg("previous", "path to previous import file").Default("/dev/zero").String()
+	previousPath = kingpin.Arg("previous", "path to previous import file").Default("/dev/null").String()
 )
 
 func main() {
@@ -67,6 +67,7 @@ func main() {
 		delete(previousUUIDs, row[0])
 
 		wg.Add(1)
+		log.Printf("insert/update product %s\n", row[0])
 		go func(row []string) {
 			defer wg.Done()
 			msg, err := updateMsg(row)
@@ -76,16 +77,15 @@ func main() {
 			send(producer, msg, *verbose)
 		}(row)
 	}
-
 	for uuid := range previousUUIDs {
 		wg.Add(1)
 		go func(uuid string) {
+			log.Printf("delete product %s\n", uuid)
 			defer wg.Done()
 			msg := deleteMsg(uuid)
 			send(producer, msg, *verbose)
 		}(uuid)
 	}
-
 	wg.Wait()
 }
 
