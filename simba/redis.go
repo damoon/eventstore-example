@@ -16,10 +16,10 @@ type Redis struct {
 	parallelism int64
 }
 
-func NewRedis(options *redis.Options, topic string, partition int32, parallelism int64) *Redis {
+func NewRedis(options *redis.Options, view, topic string, partition int32, parallelism int64) *Redis {
 	return &Redis{
-		offsetKey:   fmt.Sprintf("_kafka_offset_%s_%d", topic, partition),
 		redis:       *redis.NewClient(options),
+		offsetKey:   fmt.Sprintf("_kafka_offset_%s_%s_%d", view, topic, partition),
 		sem:         semaphore.NewWeighted(parallelism),
 		parallelism: parallelism,
 	}
@@ -66,4 +66,22 @@ func (r *Redis) Remove(key string) error {
 	}
 	defer r.sem.Release(1)
 	return r.redis.Del(key).Err()
+}
+
+func (r *Redis) SetAdd(key, value string) error {
+	err := r.sem.Acquire(context.Background(), 1)
+	if err != nil {
+		return fmt.Errorf("failed to store %s to redis: %s", key, err)
+	}
+	defer r.sem.Release(1)
+	return r.redis.SAdd(key, value).Err()
+}
+
+func (r *Redis) SetDel(key, value string) error {
+	err := r.sem.Acquire(context.Background(), 1)
+	if err == redis.Nil {
+		return fmt.Errorf("failed to remove %s from redis: %s", key, err)
+	}
+	defer r.sem.Release(1)
+	return r.redis.SRem(key, value).Err()
 }

@@ -5,10 +5,13 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/Shopify/sarama"
+	"github.com/damoon/eventstore-example/pb"
 	"github.com/damoon/eventstore-example/simba"
 	"github.com/go-redis/redis"
+	"github.com/gogo/protobuf/proto"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -45,7 +48,7 @@ func main() {
 		Addr:     *redisAddress,
 		Password: *redisPassword,
 		DB:       *redisDatabase,
-	}, "productdetails", *topic, *partition, *redisParallel)
+	}, "loremipsum", *topic, *partition, *redisParallel)
 	view := &productDetails{
 		Redis: *redis,
 	}
@@ -71,17 +74,40 @@ func main() {
 }
 
 func (v *productDetails) Incorporate(msg *sarama.ConsumerMessage) error {
+
+	mapKey := "lorem-ipsum"
+	searchTerm := "lorem ipsum"
+
 	if msg.Value == nil {
-		err := v.Remove(string(msg.Key))
+		err := v.SetDel(mapKey, string(msg.Key))
 		if err != nil {
-			return fmt.Errorf("failed to set %s in redis: %s", string(msg.Key), err)
+			return fmt.Errorf("failed to remove %s from redis set: %s", string(msg.Key), err)
 		}
 		return nil
 	}
 
-	err := v.Store(string(msg.Key), msg.Value)
+	product := &pb.Product{}
+	proto.Unmarshal(msg.Value, product)
+	if !found(product, searchTerm) {
+		return nil
+	}
+
+	err := v.SetAdd(mapKey, string(msg.Key))
 	if err != nil {
-		return fmt.Errorf("failed to set %s in redis: %s", string(msg.Key), err)
+		return fmt.Errorf("failed to add %s to redis set: %s", string(msg.Key), err)
 	}
 	return nil
+}
+
+func found(product *pb.Product, searchTerm string) bool {
+	if strings.Contains(product.Title, searchTerm) {
+		return true
+	}
+	if strings.Contains(product.Description, searchTerm) {
+		return true
+	}
+	if strings.Contains(product.Longtext, searchTerm) {
+		return true
+	}
+	return false
 }
