@@ -25,12 +25,15 @@ func main() {
 	w := csv.NewWriter(os.Stdout)
 
 	for i := 0; i < *rows; i++ {
-		w.Write(newRow())
+		err := w.Write(newRow())
+		if err != nil {
+			log.Panicf("error adding row: %s\n", err)
+		}
 	}
 
 	w.Flush()
 	if err := w.Error(); err != nil {
-		log.Fatalf("error writing csv: %s\n", err)
+		log.Panicf("error writing csv: %s\n", err)
 	}
 }
 

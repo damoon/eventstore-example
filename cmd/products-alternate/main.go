@@ -35,7 +35,10 @@ func main() {
 		}
 
 		if rand.Intn(100) < *add {
-			w.Write(newRow())
+			err := w.Write(newRow())
+			if err != nil {
+				log.Panicf("error adding new row: %s\n", err)
+			}
 		}
 		if rand.Intn(100) < *remove {
 			continue
@@ -43,8 +46,10 @@ func main() {
 		if rand.Intn(100) < *modify {
 			record = modifyRow(record)
 		}
-		w.Write(record)
-
+		err = w.Write(record)
+		if err != nil {
+			log.Panicf("error keeping row: %s\n", err)
+		}
 	}
 
 	w.Flush()
