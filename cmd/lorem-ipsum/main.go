@@ -64,7 +64,7 @@ func (v *productDetails) Incorporate(msg *sarama.ConsumerMessage) error {
 	mapKey := "lorem-ipsum"
 	searchTerm := "lorem ipsum"
 
-	log.Printf("partition %d, offset %d, key %s", msg.Partition, msg.Offset, string(msg.Key))
+	//	log.Printf("partition %d, offset %d, key %s", msg.Partition, msg.Offset, string(msg.Key))
 
 	if msg.Value == nil {
 		err := v.SetDel(mapKey, string(msg.Key))

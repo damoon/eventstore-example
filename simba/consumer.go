@@ -11,7 +11,7 @@ import (
 	cluster "github.com/bsm/sarama-cluster"
 )
 
-const msgBuffer = 65536
+const msgBuffer = 10000
 const maxOffsetDelay = 5 * time.Second
 
 type MaterializedViews interface {
@@ -23,7 +23,8 @@ type Consumer struct {
 	partition *cluster.Consumer
 	view      MaterializedViews
 	msgs      chan *sarama.ConsumerMessage
-	wg        *sync.WaitGroup
+	inflight  *sync.WaitGroup
+	marking   *sync.WaitGroup
 }
 
 func NewConsumer(consumer *cluster.Consumer, view MaterializedViews) *Consumer {
@@ -32,7 +33,8 @@ func NewConsumer(consumer *cluster.Consumer, view MaterializedViews) *Consumer {
 		doneCh:    make(chan struct{}),
 		view:      view,
 		msgs:      make(chan *sarama.ConsumerMessage, msgBuffer),
-		wg:        &sync.WaitGroup{},
+		inflight:  &sync.WaitGroup{},
+		marking:   &sync.WaitGroup{},
 	}
 }
 
@@ -52,15 +54,15 @@ func (c *Consumer) Start() {
 			log.Printf("Rebalanced: %+v\n", ntf)
 
 		case msg := <-c.partition.Messages():
-			c.wg.Add(1)
+			c.inflight.Add(1)
 			c.msgs <- msg
-			go func() {
-				defer c.wg.Done()
+			go func(wg *sync.WaitGroup) {
+				defer wg.Done()
 				err := c.view.Incorporate(msg)
 				if err != nil {
 					log.Panicf("failed to incorporate msg into view: %s", err)
 				}
-			}()
+			}(c.inflight)
 			if len(c.msgs) == msgBuffer {
 				saveOffset.Stop()
 				c.persistOffset()
@@ -82,12 +84,24 @@ func (c *Consumer) Start() {
 }
 
 func (c *Consumer) persistOffset() {
-	defer func() {}()
 	if len(c.msgs) == 0 {
 		return
 	}
-	c.wg.Wait()
-	for len(c.msgs) != 0 {
-		c.partition.MarkOffset(<-c.msgs, "")
-	}
+	c.marking.Wait()
+	c.marking.Add(1)
+	go func(wg *sync.WaitGroup, msgs chan *sarama.ConsumerMessage) {
+		var i int64 = 0
+		wg.Wait()
+		close(msgs)
+		for msg := range msgs {
+			if i < msg.Offset {
+				i = msg.Offset
+			}
+			c.partition.MarkOffset(msg, "")
+		}
+		log.Printf("saved offset %d", i)
+		c.marking.Done()
+	}(c.inflight, c.msgs)
+	c.inflight = &sync.WaitGroup{}
+	c.msgs = make(chan *sarama.ConsumerMessage, msgBuffer)
 }
