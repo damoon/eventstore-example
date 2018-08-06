@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 
 	"github.com/Shopify/sarama"
 	cluster "github.com/bsm/sarama-cluster"
@@ -21,21 +23,8 @@ var (
 	redisParallel = kingpin.Flag("redisParallel", "Parallel Redis Connections").Default("64").Int64()
 )
 
-type productDetails struct {
-	simba.Redis
-}
-
 func main() {
 	kingpin.Parse()
-
-	redis := simba.NewRedis(&redis.Options{
-		Addr:     *redisAddress,
-		Password: *redisPassword,
-		DB:       *redisDatabase,
-	})
-	view := &productDetails{
-		Redis: *redis,
-	}
 
 	config := cluster.NewConfig()
 	config.Consumer.Return.Errors = true
@@ -52,23 +41,36 @@ func main() {
 		}
 	}()
 
-	simba := simba.NewConsumer(consumer, view)
+	r := redis.NewClient(&redis.Options{
+		Addr:     *redisAddress,
+		Password: *redisPassword,
+		DB:       *redisDatabase,
+	})
+	v := func(msg *sarama.ConsumerMessage) error {
+		return view(r, msg)
+	}
+	simba := simba.NewConsumer(consumer, v)
 	simba.Start()
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt)
+	<-signals
+	log.Print("interrupt is detected")
+	simba.Stop()
 }
 
-func (v *productDetails) Incorporate(msg *sarama.ConsumerMessage) error {
-
+func view(redis *redis.Client, msg *sarama.ConsumerMessage) error {
 	//	log.Printf("partition %d, offset %d, key %s", msg.Partition, msg.Offset, string(msg.Key))
 
 	if msg.Value == nil {
-		err := v.Remove(string(msg.Key))
+		err := redis.Del(string(msg.Key)).Err()
 		if err != nil {
 			return fmt.Errorf("failed to set %s in redis: %s", string(msg.Key), err)
 		}
 		return nil
 	}
 
-	err := v.Store(string(msg.Key), msg.Value)
+	err := redis.Set(string(msg.Key), msg.Value, 0).Err()
 	if err != nil {
 		return fmt.Errorf("failed to set %s in redis: %s", string(msg.Key), err)
 	}

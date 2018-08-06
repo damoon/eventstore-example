@@ -2,8 +2,6 @@ package simba
 
 import (
 	"log"
-	"os"
-	"os/signal"
 	"sync"
 	"time"
 
@@ -14,51 +12,48 @@ import (
 const msgBuffer = 10000
 const maxOffsetDelay = 5 * time.Second
 
-type MaterializedViews interface {
-	Incorporate(msg *sarama.ConsumerMessage) error
-}
-
 type Consumer struct {
-	doneCh    chan struct{}
-	partition *cluster.Consumer
-	view      MaterializedViews
-	msgs      chan *sarama.ConsumerMessage
-	inflight  *sync.WaitGroup
-	marking   *sync.WaitGroup
+	doneCh   chan struct{}
+	consumer *cluster.Consumer
+	view     func(msg *sarama.ConsumerMessage) error
+	msgs     chan *sarama.ConsumerMessage
+	inflight *sync.WaitGroup
+	marking  *sync.WaitGroup
 }
 
-func NewConsumer(consumer *cluster.Consumer, view MaterializedViews) *Consumer {
+func NewConsumer(consumer *cluster.Consumer, view func(msg *sarama.ConsumerMessage) error) *Consumer {
 	return &Consumer{
-		partition: consumer,
-		doneCh:    make(chan struct{}),
-		view:      view,
-		msgs:      make(chan *sarama.ConsumerMessage, msgBuffer),
-		inflight:  &sync.WaitGroup{},
-		marking:   &sync.WaitGroup{},
+		consumer: consumer,
+		doneCh:   make(chan struct{}),
+		view:     view,
+		msgs:     make(chan *sarama.ConsumerMessage, msgBuffer),
+		inflight: &sync.WaitGroup{},
+		marking:  &sync.WaitGroup{},
 	}
 }
 
-func (c *Consumer) Start() {
+func (c *Consumer) Stop() {
+	c.doneCh <- struct{}{}
+}
 
-	OSSignals := make(chan os.Signal, 1)
-	signal.Notify(OSSignals, os.Interrupt)
+func (c *Consumer) Start() {
 
 	saveOffset := time.NewTimer(5 * time.Second)
 
 	for {
 		select {
-		case err := <-c.partition.Errors():
+		case err := <-c.consumer.Errors():
 			log.Panicf("failure from kafka consumer: %s", err)
 
-		case ntf := <-c.partition.Notifications():
+		case ntf := <-c.consumer.Notifications():
 			log.Printf("Rebalanced: %+v\n", ntf)
 
-		case msg := <-c.partition.Messages():
+		case msg := <-c.consumer.Messages():
 			c.inflight.Add(1)
 			c.msgs <- msg
 			go func(wg *sync.WaitGroup) {
 				defer wg.Done()
-				err := c.view.Incorporate(msg)
+				err := c.view(msg)
 				if err != nil {
 					log.Panicf("failed to incorporate msg into view: %s", err)
 				}
@@ -73,11 +68,11 @@ func (c *Consumer) Start() {
 			c.persistOffset()
 			saveOffset = time.NewTimer(maxOffsetDelay)
 
-		case <-OSSignals:
+		case <-c.doneCh:
 			log.Print("interrupt is detected")
 			saveOffset.Stop()
 			c.persistOffset()
-			c.partition.Close()
+			c.consumer.Close()
 			return
 		}
 	}
@@ -87,8 +82,10 @@ func (c *Consumer) persistOffset() {
 	if len(c.msgs) == 0 {
 		return
 	}
+
 	c.marking.Wait()
 	c.marking.Add(1)
+
 	go func(wg *sync.WaitGroup, msgs chan *sarama.ConsumerMessage) {
 		var i int64 = 0
 		wg.Wait()
@@ -97,11 +94,12 @@ func (c *Consumer) persistOffset() {
 			if i < msg.Offset {
 				i = msg.Offset
 			}
-			c.partition.MarkOffset(msg, "")
+			c.consumer.MarkOffset(msg, "")
 		}
 		log.Printf("saved offset %d", i)
 		c.marking.Done()
 	}(c.inflight, c.msgs)
+
 	c.inflight = &sync.WaitGroup{}
 	c.msgs = make(chan *sarama.ConsumerMessage, msgBuffer)
 }
