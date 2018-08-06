@@ -3,11 +3,10 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
 	"strings"
 
 	"github.com/Shopify/sarama"
+	cluster "github.com/bsm/sarama-cluster"
 	"github.com/damoon/eventstore-example/pb"
 	"github.com/damoon/eventstore-example/simba"
 	"github.com/go-redis/redis"
@@ -32,51 +31,40 @@ type productDetails struct {
 func main() {
 	kingpin.Parse()
 
-	kafkaConfig := sarama.NewConfig()
-	kafkaConfig.Consumer.Return.Errors = true
-	kafka, err := sarama.NewConsumer(*brokerList, kafkaConfig)
-	if err != nil {
-		log.Panicf("failed to setup kafka consumer: %s", err)
-	}
-	defer func() {
-		if err := kafka.Close(); err != nil {
-			log.Panicf("failed to close kafka consumer: %s", err)
-		}
-	}()
-
 	redis := simba.NewRedis(&redis.Options{
 		Addr:     *redisAddress,
 		Password: *redisPassword,
 		DB:       *redisDatabase,
-	}, "loremipsum", *topic, *partition, *redisParallel)
+	})
 	view := &productDetails{
 		Redis: *redis,
 	}
-	offset, err := redis.FetchOffset()
+
+	config := cluster.NewConfig()
+	config.Consumer.Return.Errors = true
+	config.Consumer.Offsets.Initial = sarama.OffsetOldest
+	config.Group.Return.Notifications = true
+	topics := []string{*topic}
+	consumer, err := cluster.NewConsumer(*brokerList, "lorem-ipsum2", topics, config)
 	if err != nil {
-		log.Panicf("failed load kafka offset from redis: %v", err)
+		log.Panicf("failed to setup kafka consumer: %s", err)
 	}
-	log.Printf("starting with offset of %d in partition %d", offset, *partition)
+	defer func() {
+		if err := consumer.Close(); err != nil {
+			log.Panicf("failed to close kafka consumer: %s", err)
+		}
+	}()
 
-	partition, err := kafka.ConsumePartition(*topic, *partition, offset)
-	if err != nil {
-		log.Panicf("failed to select kafka partition: %s", err)
-	}
-
-	consumer := simba.NewConsumer(partition, view)
-	consumer.Start()
-
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt)
-	<-signals
-	log.Print("interrupt is detected")
-	consumer.Stop()
+	simba := simba.NewConsumer(consumer, view)
+	simba.Start()
 }
 
 func (v *productDetails) Incorporate(msg *sarama.ConsumerMessage) error {
 
 	mapKey := "lorem-ipsum"
 	searchTerm := "lorem ipsum"
+
+	log.Printf("partition %d, offset %d, key %s", msg.Partition, msg.Offset, string(msg.Key))
 
 	if msg.Value == nil {
 		err := v.SetDel(mapKey, string(msg.Key))
