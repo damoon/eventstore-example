@@ -17,8 +17,8 @@ type Consumer struct {
 	consumer *cluster.Consumer
 	view     func(msg *sarama.ConsumerMessage) error
 	msgs     chan *sarama.ConsumerMessage
-	inflight *sync.WaitGroup
-	marking  *sync.WaitGroup
+	wg       *sync.WaitGroup
+	mux      *sync.Mutex
 }
 
 func NewConsumer(consumer *cluster.Consumer, view func(msg *sarama.ConsumerMessage) error) *Consumer {
@@ -27,8 +27,8 @@ func NewConsumer(consumer *cluster.Consumer, view func(msg *sarama.ConsumerMessa
 		doneCh:   make(chan struct{}),
 		view:     view,
 		msgs:     make(chan *sarama.ConsumerMessage, msgBuffer),
-		inflight: &sync.WaitGroup{},
-		marking:  &sync.WaitGroup{},
+		wg:       &sync.WaitGroup{},
+		mux:      &sync.Mutex{},
 	}
 }
 
@@ -49,7 +49,7 @@ func (c *Consumer) Start() {
 			log.Printf("Rebalanced: %+v\n", ntf)
 
 		case msg := <-c.consumer.Messages():
-			c.inflight.Add(1)
+			c.wg.Add(1)
 			c.msgs <- msg
 			go func(wg *sync.WaitGroup) {
 				defer wg.Done()
@@ -57,7 +57,7 @@ func (c *Consumer) Start() {
 				if err != nil {
 					log.Panicf("failed to incorporate msg into view: %s", err)
 				}
-			}(c.inflight)
+			}(c.wg)
 			if len(c.msgs) == msgBuffer {
 				saveOffset.Stop()
 				c.persistOffset()
@@ -83,23 +83,17 @@ func (c *Consumer) persistOffset() {
 		return
 	}
 
-	c.marking.Wait()
-	c.marking.Add(1)
-
+	c.mux.Lock()
 	go func(wg *sync.WaitGroup, msgs chan *sarama.ConsumerMessage) {
-		var i int64 = 0
+		defer c.mux.Unlock()
 		wg.Wait()
 		close(msgs)
+		log.Printf("processed %d messages", len(msgs))
 		for msg := range msgs {
-			if i < msg.Offset {
-				i = msg.Offset
-			}
 			c.consumer.MarkOffset(msg, "")
 		}
-		log.Printf("saved offset %d", i)
-		c.marking.Done()
-	}(c.inflight, c.msgs)
+	}(c.wg, c.msgs)
 
-	c.inflight = &sync.WaitGroup{}
+	c.wg = &sync.WaitGroup{}
 	c.msgs = make(chan *sarama.ConsumerMessage, msgBuffer)
 }
