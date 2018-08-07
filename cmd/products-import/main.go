@@ -13,6 +13,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/damoon/eventstore-example/pb"
 	"github.com/golang/protobuf/proto"
+	"github.com/mitchellh/hashstructure"
 )
 
 var (
@@ -45,17 +46,17 @@ func main() {
 		}
 	}()
 
-	f, err := os.Open(*previousPath)
-	if err != nil {
-		log.Panicf("failed to open previous import file: %s", err)
-	}
-	previousUUIDs, err := uuids(f)
+	previousUUIDs, err := prevUUIDs(*previousPath)
 	if err != nil {
 		log.Panicf("failed to load UUIDs from previous import file: %s", err)
 	}
+	previousHashes, err := prevHashes(*previousPath)
+	if err != nil {
+		log.Panicf("failed to calculate hashes from previous import file: %s", err)
+	}
 
-	var i int
-	f, err = os.Open(*currentPath)
+	var rowNumber int
+	f, err := os.Open(*currentPath)
 	if err != nil {
 		log.Panicf("failed to open latest import file: %s", err)
 	}
@@ -66,38 +67,87 @@ func main() {
 			break
 		}
 
-		delete(previousUUIDs, row[0])
+		rowNumber++
+		UUID := row[0]
 
-		i++
-		if *verbose {
-			log.Printf("insert/update product #%d %s\n", i, row[0])
+		hash, err := hashstructure.Hash(row, nil)
+		if err != nil {
+			log.Panicf("failed to create update message: %s", err)
 		}
-		msg, err := updateMsg(row)
+
+		if _, ok := previousHashes[hash]; ok {
+			if *verbose {
+				log.Printf("skip unchanged product #%d %s\n", rowNumber, UUID)
+			}
+			continue
+		}
+
+		if *verbose {
+			ll := "insert product #%d %s\n"
+			if _, ok := previousUUIDs[UUID]; ok {
+				ll = "update product #%d %s\n"
+			}
+			log.Printf(ll, rowNumber, UUID)
+		}
+
+		msg, err := setMsg(row)
 		if err != nil {
 			log.Panicf("failed to create update message: %s", err)
 		}
 		producer.Input() <- msg
+
+		delete(previousUUIDs, UUID)
 	}
 
-	for uuid := range previousUUIDs {
-		i++
+	for UUID := range previousUUIDs {
 		if *verbose {
-			log.Printf("delete product #%d %s\n", i, uuid)
+			log.Printf("delete product %s\n", UUID)
 		}
-		msg := deleteMsg(uuid)
-		producer.Input() <- msg
+		producer.Input() <- deleteMsg(UUID)
 	}
 }
 
-func uuids(f io.Reader) (map[string]bool, error) {
+func prevUUIDs(path string) (map[string]bool, error) {
 	m := make(map[string]bool)
+
+	f, err := os.Open(path)
+	if err != nil {
+		return m, fmt.Errorf("failed to open previous import file: %s", err)
+	}
+	defer f.Close()
+
 	r := csv.NewReader(f)
 	for {
 		row, err := r.Read()
 		if err == io.EOF {
 			break
 		}
-		m[row[0]] = true
+		uuid := row[0]
+		m[uuid] = true
+	}
+	return m, nil
+}
+
+func prevHashes(path string) (map[uint64]bool, error) {
+	m := make(map[uint64]bool)
+
+	f, err := os.Open(path)
+	if err != nil {
+		return m, fmt.Errorf("failed to open previous import file: %s", err)
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	for {
+		row, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		hash, err := hashstructure.Hash(row, nil)
+		if err != nil {
+			return m, fmt.Errorf("failed to hash product: %s", err)
+		}
+		m[hash] = true
 	}
 	return m, nil
 }
@@ -110,7 +160,7 @@ func deleteMsg(uuid string) *sarama.ProducerMessage {
 	}
 }
 
-func updateMsg(row []string) (*sarama.ProducerMessage, error) {
+func setMsg(row []string) (*sarama.ProducerMessage, error) {
 	product, err := row2product(row)
 	if err != nil {
 		return &sarama.ProducerMessage{}, fmt.Errorf("failed to map row to proto buffer product: %s", err)
