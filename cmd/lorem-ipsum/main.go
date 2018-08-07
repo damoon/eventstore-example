@@ -19,11 +19,9 @@ import (
 var (
 	brokerList    = kingpin.Flag("brokerList", "List of brokers to connect").Default("localhost:9092").Strings()
 	topic         = kingpin.Flag("topic", "Topic name").Default("products").String()
-	partition     = kingpin.Flag("partition", "Partition number").Default("0").Int32()
 	redisAddress  = kingpin.Flag("redisAddress", "Redis Host").Default("redis:6379").String()
 	redisPassword = kingpin.Flag("redisPassword", "Redis Password").Default("").String()
 	redisDatabase = kingpin.Flag("redisDatabase", "Redis Database").Default("0").Int()
-	redisParallel = kingpin.Flag("redisParallel", "Parallel Redis Connections").Default("64").Int64()
 )
 
 func main() {
@@ -78,12 +76,15 @@ func view(redis *redis.Client, msg *sarama.ConsumerMessage) error {
 	}
 
 	product := &pb.Product{}
-	proto.Unmarshal(msg.Value, product)
+	err := proto.Unmarshal(msg.Value, product)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal product %s: %s", string(msg.Key), err)
+	}
 	if !found(product, searchTerm) {
 		return nil
 	}
 
-	err := redis.SAdd(mapKey, string(msg.Key)).Err()
+	err = redis.SAdd(mapKey, string(msg.Key)).Err()
 	if err != nil {
 		return fmt.Errorf("failed to add %s to redis set: %s", string(msg.Key), err)
 	}

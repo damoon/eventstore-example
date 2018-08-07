@@ -16,11 +16,9 @@ import (
 var (
 	brokerList    = kingpin.Flag("brokerList", "List of brokers to connect").Default("localhost:9092").Strings()
 	topic         = kingpin.Flag("topic", "Topic name").Default("products").String()
-	partition     = kingpin.Flag("partition", "Partition number").Default("0").Int32()
 	redisAddress  = kingpin.Flag("redisAddress", "Redis Host").Default("redis:6379").String()
 	redisPassword = kingpin.Flag("redisPassword", "Redis Password").Default("").String()
 	redisDatabase = kingpin.Flag("redisDatabase", "Redis Database").Default("0").Int()
-	redisParallel = kingpin.Flag("redisParallel", "Parallel Redis Connections").Default("64").Int64()
 )
 
 func main() {
