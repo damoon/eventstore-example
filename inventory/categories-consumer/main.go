@@ -9,8 +9,8 @@ import (
 
 	"github.com/Shopify/sarama"
 	cluster "github.com/bsm/sarama-cluster"
-	"github.com/damoon/eventstore-example/pb"
-	"github.com/damoon/eventstore-example/simba"
+	"github.com/damoon/eventstore-example/pkg/pb"
+	"github.com/damoon/eventstore-example/pkg/simba"
 	"github.com/go-redis/redis"
 	"github.com/gogo/protobuf/proto"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"

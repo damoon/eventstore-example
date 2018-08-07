@@ -9,7 +9,7 @@ import (
 	"strconv"
 
 	"github.com/Shopify/sarama"
-	"github.com/damoon/eventstore-example/pb"
+	"github.com/damoon/eventstore-example/pkg/pb"
 	"github.com/golang/protobuf/proto"
 	"github.com/mitchellh/hashstructure"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
