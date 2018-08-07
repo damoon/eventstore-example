@@ -58,12 +58,10 @@ func main() {
 }
 
 func view(redis *redis.Client, msg *sarama.ConsumerMessage) error {
-	//	log.Printf("partition %d, offset %d, key %s", msg.Partition, msg.Offset, string(msg.Key))
-
 	if msg.Value == nil {
 		err := redis.Del(string(msg.Key)).Err()
 		if err != nil {
-			return fmt.Errorf("failed to set %s in redis: %s", string(msg.Key), err)
+			return fmt.Errorf("failed to delete %s in redis: %s", string(msg.Key), err)
 		}
 		return nil
 	}

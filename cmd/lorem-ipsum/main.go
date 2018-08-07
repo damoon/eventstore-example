@@ -65,8 +65,6 @@ func view(redis *redis.Client, msg *sarama.ConsumerMessage) error {
 	mapKey := "lorem-ipsum"
 	searchTerm := "lorem ipsum"
 
-	//	log.Printf("partition %d, offset %d, key %s", msg.Partition, msg.Offset, string(msg.Key))
-
 	if msg.Value == nil {
 		err := redis.SRem(mapKey, string(msg.Key)).Err()
 		if err != nil {

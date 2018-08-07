@@ -59,42 +59,25 @@ func main() {
 }
 
 func modifyRow(in []string) []string {
-	UUID := in[0]
-	title := in[1]
-	description := in[2]
-	longText := in[3]
-	smallImageURL := in[4]
-	largeImageURL := in[5]
-	price := in[6]
-
 	if rand.Intn(2) == 1 {
-		title = fmt.Sprintf("%s %s %s", lorem.Word(4, 13), lorem.Word(4, 13), lorem.Word(4, 13))
+		in[1] = fmt.Sprintf("%s %s %s", lorem.Word(4, 13), lorem.Word(4, 13), lorem.Word(4, 13))
 	}
 	if rand.Intn(2) == 1 {
-		description = lorem.Sentence(12, 24)
+		in[2] = lorem.Sentence(12, 24)
 	}
 	if rand.Intn(2) == 1 {
-		longText = lorem.Paragraph(3, 6)
+		in[3] = lorem.Paragraph(3, 6)
 	}
 	if rand.Intn(2) == 1 {
-		smallImageURL = lorem.Url()
+		in[4] = lorem.Url()
 	}
 	if rand.Intn(2) == 1 {
-		largeImageURL = lorem.Url()
+		in[5] = lorem.Url()
 	}
 	if rand.Intn(2) == 1 {
-		price = fmt.Sprintf("%.2f", float64(rand.Intn(10000))/100)
+		in[6] = fmt.Sprintf("%.2f", float64(rand.Intn(10000))/100)
 	}
-
-	return []string{
-		UUID,
-		title,
-		description,
-		longText,
-		smallImageURL,
-		largeImageURL,
-		price,
-	}
+	return in
 }
 
 func newRow() []string {

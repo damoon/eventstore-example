@@ -12,6 +12,7 @@ import (
 const msgBuffer = 10000
 const maxOffsetDelay = 5 * time.Second
 
+// Consumer fetches messages from kafka and calls the view function to update itself
 type Consumer struct {
 	doneCh   chan struct{}
 	consumer *cluster.Consumer
@@ -21,6 +22,7 @@ type Consumer struct {
 	mux      *sync.Mutex
 }
 
+// NewConsumer constructs a startable Consumer
 func NewConsumer(consumer *cluster.Consumer, view func(msg *sarama.ConsumerMessage) error) *Consumer {
 	return &Consumer{
 		consumer: consumer,
@@ -32,10 +34,12 @@ func NewConsumer(consumer *cluster.Consumer, view func(msg *sarama.ConsumerMessa
 	}
 }
 
+// Stop ends eventloop
 func (c *Consumer) Stop() {
 	c.doneCh <- struct{}{}
 }
 
+// Start listens for events from kafka
 func (c *Consumer) Start() {
 
 	saveOffset := time.NewTimer(5 * time.Second)

@@ -8,12 +8,11 @@ import (
 	"os"
 	"strconv"
 
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
-
 	"github.com/Shopify/sarama"
 	"github.com/damoon/eventstore-example/pb"
 	"github.com/golang/protobuf/proto"
 	"github.com/mitchellh/hashstructure"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
