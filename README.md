@@ -16,6 +16,10 @@ http://cloudurable.com/blog/kafka-architecture/index.html
 
 https://blog.scottlogic.com/2018/04/17/comparing-big-data-messaging.html
 
+https://www.tutorialkart.com/apache-kafka/apache-kafka-architecture/
+
+https://stackoverflow.com/questions/49276785/monitoring-ui-for-apache-kafka-kafka-manager-vs-kafka-monitor
+
 csv -> product importer (producer) -> kafka -.
                                              |-> product consumer -> redis
                                              `-> categories consumer -> redis
