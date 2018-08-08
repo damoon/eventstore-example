@@ -11,7 +11,6 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/damoon/eventstore-example/pkg/pb"
 	"github.com/golang/protobuf/proto"
-	"github.com/mitchellh/hashstructure"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -26,6 +25,10 @@ var (
 func main() {
 
 	kingpin.Parse()
+
+	log.Printf("current import file %s", *currentPath)
+	log.Printf("previous import file %s", *previousPath)
+
 	config := sarama.NewConfig()
 	config.Producer.RequiredAcks = sarama.WaitForAll
 	config.Producer.Flush.MaxMessages = 500
@@ -45,76 +48,128 @@ func main() {
 		}
 	}()
 
-	previousUUIDs, err := prevUUIDs(*previousPath)
+	prevProducts, err := rows(*previousPath)
 	if err != nil {
-		log.Panicf("failed to load UUIDs from previous import file: %s", err)
+		log.Panicf("failed to load previous import file: %s", err)
 	}
-	previousHashes, err := prevHashes(*previousPath)
+	currentProducts, err := rows(*currentPath)
 	if err != nil {
-		log.Panicf("failed to calculate hashes from previous import file: %s", err)
+		log.Panicf("failed to load current import file: %s", err)
 	}
 
-	var rowNumber int
-	f, err := os.Open(*currentPath)
-	if err != nil {
-		log.Panicf("failed to open latest import file: %s", err)
-	}
-	r := csv.NewReader(f)
-	for {
-		row, err := r.Read()
-		if err == io.EOF {
-			break
-		}
+	upsert(prevProducts, currentProducts, producer.Input())
+	remove(prevProducts, producer.Input())
 
-		rowNumber++
-		UUID := row[0]
+}
 
-		hash, err := hashstructure.Hash(row, nil)
-		if err != nil {
-			log.Panicf("failed to create update message: %s", err)
-		}
+func upsert(prevProducts, currentProducts map[string][]string, ch chan<- *sarama.ProducerMessage) {
+	for _, currentRow := range currentProducts {
 
-		if _, ok := previousHashes[hash]; ok {
+		UUID := currentRow[0]
+
+		prevRow, prevFound := prevProducts[UUID]
+
+		if equal(prevRow, currentRow) {
 			if *verbose {
-				log.Printf("skip unchanged product #%d %s\n", rowNumber, UUID)
+				log.Printf("skip unchanged product %s\n", UUID)
 			}
 			continue
 		}
 
 		if *verbose {
-			ll := "insert product #%d %s\n"
-			if _, ok := previousUUIDs[UUID]; ok {
-				ll = "update product #%d %s\n"
+			ll := "insert product %s\n"
+			if prevFound {
+				ll = "update product %s\n"
 			}
-			log.Printf(ll, rowNumber, UUID)
+			log.Printf(ll, UUID)
 		}
 
-		msg, err := setMsg(row)
+		prev, err := row2product(prevRow)
 		if err != nil {
-			log.Panicf("failed to create update message: %s", err)
+			log.Panicf("failed to serialize previous product %s: %s", UUID, err)
 		}
-		producer.Input() <- msg
-
-		delete(previousUUIDs, UUID)
-	}
-
-	for UUID := range previousUUIDs {
-		if *verbose {
-			log.Printf("delete product %s\n", UUID)
+		curr, err := row2product(currentRow)
+		if err != nil {
+			log.Panicf("failed to serialize previous product %s: %s", UUID, err)
 		}
-		producer.Input() <- deleteMsg(UUID)
+		msg := &pb.ProductUpdate{
+			Old: prev,
+			New: curr,
+		}
+
+		err = sendUpdate(ch, UUID, msg)
+		if err != nil {
+			log.Panicf("failed to send update massage: %s", err)
+		}
+
+		delete(prevProducts, UUID)
 	}
 }
 
-func prevUUIDs(path string) (map[string]bool, error) {
-	m := make(map[string]bool)
+func remove(prevProducts map[string][]string, ch chan<- *sarama.ProducerMessage) {
+	for _, prevRow := range prevProducts {
+		UUID := prevRow[0]
+		if *verbose {
+			log.Printf("delete product %s\n", UUID)
+		}
+
+		prev, err := row2product(prevRow)
+		if err != nil {
+			log.Panicf("failed to serialize previous product %s: %s", UUID, err)
+		}
+		msg := &pb.ProductUpdate{
+			Old: prev,
+		}
+
+		err = sendUpdate(ch, UUID, msg)
+		if err != nil {
+			log.Panicf("failed to send update massage: %s", err)
+		}
+	}
+}
+
+func sendUpdate(ch chan<- *sarama.ProducerMessage, UUID string, msg *pb.ProductUpdate) error {
+	bytes, err := proto.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to serialize product delete massage: %s", err)
+	}
+	ch <- &sarama.ProducerMessage{
+		Topic: *topic,
+		Key:   sarama.StringEncoder(UUID),
+		Value: sarama.ByteEncoder(bytes),
+	}
+	return nil
+}
+
+func equal(a, b []string) bool {
+
+	// If one is nil, the other must also be nil.
+	if (a == nil) != (b == nil) {
+		return false
+	}
+
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func rows(path string) (map[string][]string, error) {
 
 	f, err := os.Open(path)
 	if err != nil {
-		return m, fmt.Errorf("failed to open previous import file: %s", err)
+		return nil, fmt.Errorf("failed to open previous import file: %s", err)
 	}
 	defer f.Close()
 
+	m := make(map[string][]string)
 	r := csv.NewReader(f)
 	for {
 		row, err := r.Read()
@@ -122,63 +177,23 @@ func prevUUIDs(path string) (map[string]bool, error) {
 			break
 		}
 		uuid := row[0]
-		m[uuid] = true
+
+		if _, ok := m[uuid]; ok {
+			return nil, fmt.Errorf("product doublication in import list")
+		}
+
+		m[uuid] = row
 	}
 	return m, nil
-}
-
-func prevHashes(path string) (map[uint64]bool, error) {
-	m := make(map[uint64]bool)
-
-	f, err := os.Open(path)
-	if err != nil {
-		return m, fmt.Errorf("failed to open previous import file: %s", err)
-	}
-	defer f.Close()
-
-	r := csv.NewReader(f)
-	for {
-		row, err := r.Read()
-		if err == io.EOF {
-			break
-		}
-		hash, err := hashstructure.Hash(row, nil)
-		if err != nil {
-			return m, fmt.Errorf("failed to hash product: %s", err)
-		}
-		m[hash] = true
-	}
-	return m, nil
-}
-
-func deleteMsg(uuid string) *sarama.ProducerMessage {
-	return &sarama.ProducerMessage{
-		Topic: *topic,
-		Key:   sarama.StringEncoder(uuid),
-		Value: nil,
-	}
-}
-
-func setMsg(row []string) (*sarama.ProducerMessage, error) {
-	product, err := row2product(row)
-	if err != nil {
-		return &sarama.ProducerMessage{}, fmt.Errorf("failed to map row to proto buffer product: %s", err)
-	}
-
-	bytes, err := proto.Marshal(product)
-	if err != nil {
-		return &sarama.ProducerMessage{}, fmt.Errorf("failed to serialize product %s: %s", product.GetUuid(), err)
-	}
-
-	return &sarama.ProducerMessage{
-		Topic: *topic,
-		Key:   sarama.StringEncoder(product.GetUuid()),
-		Value: sarama.ByteEncoder(bytes),
-	}, nil
 }
 
 func row2product(row []string) (*pb.Product, error) {
-	price, err := strconv.ParseFloat(row[6], 32)
+
+	if row == nil {
+		return nil, nil
+	}
+
+	price, err := strconv.ParseFloat(row[7], 32)
 	if err != nil {
 		return &pb.Product{}, err
 	}
@@ -187,8 +202,9 @@ func row2product(row []string) (*pb.Product, error) {
 		Title:         row[1],
 		Description:   row[2],
 		Longtext:      row[3],
-		SmallImageURL: row[4],
-		LargeImageURL: row[5],
+		Category:      row[4],
+		SmallImageURL: row[5],
+		LargeImageURL: row[6],
 		Price:         float32(price),
 	}, nil
 }

@@ -8,8 +8,10 @@ import (
 
 	"github.com/Shopify/sarama"
 	cluster "github.com/bsm/sarama-cluster"
+	"github.com/damoon/eventstore-example/pkg/pb"
 	"github.com/damoon/eventstore-example/pkg/simba"
 	"github.com/go-redis/redis"
+	"github.com/golang/protobuf/proto"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -29,7 +31,7 @@ func main() {
 	config.Consumer.Offsets.Initial = sarama.OffsetOldest
 	config.Group.Return.Notifications = true
 	topics := []string{*topic}
-	consumer, err := cluster.NewConsumer(*brokerList, "productdetails2", topics, config)
+	consumer, err := cluster.NewConsumer(*brokerList, "inventory-products-v1", topics, config)
 	if err != nil {
 		log.Panicf("failed to setup kafka consumer: %s", err)
 	}
@@ -58,15 +60,25 @@ func main() {
 }
 
 func view(redis *redis.Client, msg *sarama.ConsumerMessage) error {
-	if msg.Value == nil {
-		err := redis.Del(string(msg.Key)).Err()
+
+	p := pb.ProductUpdate{}
+	err := proto.Unmarshal(msg.Value, &p)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal kafka massaga: %s", err)
+	}
+
+	UUID := string(msg.Key)
+
+	if p.New == nil {
+		err := redis.Del(UUID).Err()
 		if err != nil {
-			return fmt.Errorf("failed to delete %s in redis: %s", string(msg.Key), err)
+			return fmt.Errorf("failed to delete %s in redis: %s", UUID, err)
 		}
 		return nil
 	}
 
-	err := redis.Set(string(msg.Key), msg.Value, 0).Err()
+	bytes, err := proto.Marshal(p.New)
+	err = redis.Set(UUID, bytes, 0).Err()
 	if err != nil {
 		return fmt.Errorf("failed to set %s in redis: %s", string(msg.Key), err)
 	}

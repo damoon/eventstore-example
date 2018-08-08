@@ -45,6 +45,7 @@ func newRow() []string {
 		fmt.Sprintf("%s %s %s", lorem.Word(4, 13), lorem.Word(4, 13), lorem.Word(4, 13)),
 		lorem.Sentence(12, 24),
 		lorem.Paragraph(3, 6),
+		fmt.Sprintf("%s/%s", lorem.Word(4, 13), lorem.Word(4, 13)),
 		lorem.Url(),
 		lorem.Url(),
 		fmt.Sprintf("%.2f", price),

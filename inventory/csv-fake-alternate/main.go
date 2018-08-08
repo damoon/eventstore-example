@@ -69,13 +69,16 @@ func modifyRow(in []string) []string {
 		in[3] = lorem.Paragraph(3, 6)
 	}
 	if rand.Intn(2) == 1 {
-		in[4] = lorem.Url()
+		in[4] = fmt.Sprintf("%s/%s", lorem.Word(4, 13), lorem.Word(4, 13))
 	}
 	if rand.Intn(2) == 1 {
 		in[5] = lorem.Url()
 	}
 	if rand.Intn(2) == 1 {
-		in[6] = fmt.Sprintf("%.2f", float64(rand.Intn(10000))/100)
+		in[6] = lorem.Url()
+	}
+	if rand.Intn(2) == 1 {
+		in[7] = fmt.Sprintf("%.2f", float64(rand.Intn(10000))/100)
 	}
 	return in
 }
@@ -88,6 +91,7 @@ func newRow() []string {
 		fmt.Sprintf("%s %s %s", lorem.Word(4, 13), lorem.Word(4, 13), lorem.Word(4, 13)),
 		lorem.Sentence(12, 24),
 		lorem.Paragraph(3, 6),
+		fmt.Sprintf("%s/%s", lorem.Word(4, 13), lorem.Word(4, 13)),
 		lorem.Url(),
 		lorem.Url(),
 		fmt.Sprintf("%.2f", price),
