@@ -78,6 +78,9 @@ func view(redis *redis.Client, msg *sarama.ConsumerMessage) error {
 	}
 
 	bytes, err := proto.Marshal(p.New)
+	if err != nil {
+		return fmt.Errorf("failed to marshal the prduct %s: %s", string(msg.Key), err)
+	}
 	err = redis.Set(UUID, bytes, 0).Err()
 	if err != nil {
 		return fmt.Errorf("failed to set %s in redis: %s", string(msg.Key), err)

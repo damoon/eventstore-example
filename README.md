@@ -31,17 +31,17 @@ kubectl get po,ep,svc,pvc -o wide
 export KAFKA=
 export REDIS=
 
-go run ./inventory/csv-fake-create/main.go    -seed 0 -rows 100 > products-100-1.csv
-go run ./inventory/csv-fake-alternate/main.go -seed 0           < products-100-1.csv > products-100-2.csv
+go run ./cmd/inventory/csv-fake-create/main.go    -seed 0 -rows 100 > products-100-1.csv
+go run ./cmd/inventory/csv-fake-alternate/main.go -seed 0           < products-100-1.csv > products-100-2.csv
 meld products-100-1.csv products-100-2.csv
 
-go run ./inventory/csv-fake-create/main.go    -seed 0 -rows 1000000 > products-1m-1.csv
-go run ./inventory/csv-fake-alternate/main.go -seed 0               < products-1m-1.csv > products-1m-2.csv
+go run ./cmd/inventory/csv-fake-create/main.go    -seed 0 -rows 1000000 > products-1m-1.csv
+go run ./cmd/inventory/csv-fake-alternate/main.go -seed 0               < products-1m-1.csv > products-1m-2.csv
 
-time go run ./inventory/csv-import/main.go --brokerList=$KAFKA:9092 ./products-1m-1.csv
+time go run ./cmd/inventory/csv-import/main.go --brokerList=$KAFKA:9092 ./products-1m-1.csv
 
-go run ./inventory/products/main.go --brokerList=$KAFKA:9092 --redisAddress=$REDIS:6379
-go run ./inventory/categories/main.go --brokerList=$KAFKA:9092 --redisAddress=$REDIS:6379 --verbose
+go run ./cmd/inventory/products/main.go --brokerList=$KAFKA:9092 --redisAddress=$REDIS:6379
+go run ./cmd/inventory/categories/main.go --brokerList=$KAFKA:9092 --redisAddress=$REDIS:6379 --verbose
 
 csvtool format '%(1)\n' products-1m-1.csv | head
 kubectl exec -ti redis-master-0 -- redis-cli get 4c61efbc-4f73-43f6-ba88-cab234b10f63
@@ -53,7 +53,7 @@ kubectl exec -ti redis-master-0 -- redis-cli smembers abditioribus/apud
 kubectl exec -ti redis-master-0 -- redis-cli smembers abditioribus/admiratio
 kubectl exec -ti redis-master-0 -- redis-cli smembers bla
 
-time go run ./inventory/csv-import/main.go --brokerList=$KAFKA:9092 ./products-1m-2.csv ./products-1m-1.csv --verbose
+time go run ./cmd/inventory/csv-import/main.go --brokerList=$KAFKA:9092 ./products-1m-2.csv ./products-1m-1.csv --verbose
 
 time bash -c 'cp products-1m-1.csv /tmp/dontcare && sync'
 
